@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
+// Helper to generate unique IDs for tiles
+let tileId = 1;
+const makeTile = (value, row, col) => ({ id: tileId++, value, row, col });
+
+const GRID_SIZE = 4;
+const CELL_SIZE = 80; // px
+const CELL_GAP = 16; // px
+const BOARD_SIZE = GRID_SIZE * CELL_SIZE + (GRID_SIZE - 1) * CELL_GAP;
+
 function App() {
-  const [board, setBoard] = useState(Array(4).fill().map(() => Array(4).fill(0)));
+  const [tiles, setTiles] = useState([]); // Array of {id, value, row, col}
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -33,249 +42,136 @@ function App() {
 
   // Initialize the game with two random tiles
   useEffect(() => {
-    addRandomTile();
-    addRandomTile();
+    resetGame();
   }, []);
+
+  // Helper to get a 2D board from tiles
+  const getBoard = (tiles) => {
+    const board = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(null));
+    tiles.forEach(tile => {
+      board[tile.row][tile.col] = tile;
+    });
+    return board;
+  };
 
   // Add a random tile (2 or 4) to an empty cell
-  const addRandomTile = useCallback(() => {
-    setBoard(prevBoard => {
-      const emptyCells = [];
-      prevBoard.forEach((row, i) => {
-        row.forEach((cell, j) => {
-          if (cell === 0) {
-            emptyCells.push([i, j]);
-          }
-        });
-      });
-
-      if (emptyCells.length > 0) {
-        const [i, j] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-        const newBoard = prevBoard.map(row => [...row]);
-        newBoard[i][j] = Math.random() < 0.9 ? 2 : 4;
-        return newBoard;
-      }
-      return prevBoard;
-    });
-  }, []);
-
-  const moveLeft = useCallback((board) => {
-    let moved = false;
-    const newBoard = board.map(row => {
-      // Filter out zeros
-      let filteredRow = row.filter(cell => cell !== 0);
-      
-      // Merge adjacent equal numbers
-      for (let i = 0; i < filteredRow.length - 1; i++) {
-        if (filteredRow[i] === filteredRow[i + 1]) {
-          filteredRow[i] *= 2;
-          setScore(prev => prev + filteredRow[i]);
-          filteredRow.splice(i + 1, 1);
-          moved = true;
-        }
-      }
-      
-      // Pad with zeros
-      while (filteredRow.length < 4) {
-        filteredRow.push(0);
-      }
-      
-      // Check if the row has changed
-      if (JSON.stringify(row) !== JSON.stringify(filteredRow)) {
-        moved = true;
-      }
-      
-      return filteredRow;
-    });
-    
-    return { newBoard, moved };
-  }, []);
-
-  const moveRight = useCallback((board) => {
-    let moved = false;
-    const newBoard = board.map(row => {
-      // Filter out zeros
-      let filteredRow = row.filter(cell => cell !== 0);
-      
-      // Merge adjacent equal numbers
-      for (let i = filteredRow.length - 1; i > 0; i--) {
-        if (filteredRow[i] === filteredRow[i - 1]) {
-          filteredRow[i] *= 2;
-          setScore(prev => prev + filteredRow[i]);
-          filteredRow.splice(i - 1, 1);
-          moved = true;
-        }
-      }
-      
-      // Pad with zeros
-      while (filteredRow.length < 4) {
-        filteredRow.unshift(0);
-      }
-      
-      // Check if the row has changed
-      if (JSON.stringify(row) !== JSON.stringify(filteredRow)) {
-        moved = true;
-      }
-      
-      return filteredRow;
-    });
-    
-    return { newBoard, moved };
-  }, []);
-
-  const moveUp = useCallback((board) => {
-    let moved = false;
-    const newBoard = Array(4).fill().map(() => Array(4).fill(0));
-    
-    for (let j = 0; j < 4; j++) {
-      // Get column and filter zeros
-      let column = board.map(row => row[j]).filter(cell => cell !== 0);
-      
-      // Merge adjacent equal numbers
-      for (let i = 0; i < column.length - 1; i++) {
-        if (column[i] === column[i + 1]) {
-          column[i] *= 2;
-          setScore(prev => prev + column[i]);
-          column.splice(i + 1, 1);
-          moved = true;
-        }
-      }
-      
-      // Pad with zeros
-      while (column.length < 4) {
-        column.push(0);
-      }
-      
-      // Update the new board
-      for (let i = 0; i < 4; i++) {
-        newBoard[i][j] = column[i];
-      }
-      
-      // Check if the column has changed
-      const oldColumn = board.map(row => row[j]);
-      if (JSON.stringify(oldColumn) !== JSON.stringify(column)) {
-        moved = true;
+  const addRandomTile = useCallback((tilesArg) => {
+    const tiles = tilesArg || [...tiles];
+    const board = getBoard(tiles);
+    const emptyCells = [];
+    for (let i = 0; i < GRID_SIZE; i++) {
+      for (let j = 0; j < GRID_SIZE; j++) {
+        if (!board[i][j]) emptyCells.push([i, j]);
       }
     }
-    
-    return { newBoard, moved };
-  }, []);
+    if (emptyCells.length > 0) {
+      const [i, j] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+      tiles.push(makeTile(Math.random() < 0.9 ? 2 : 4, i, j));
+    }
+    return tiles;
+  }, [tiles]);
 
-  const moveDown = useCallback((board) => {
+  // Move logic with correct compress-merge-compress
+  const move = useCallback((direction) => {
     let moved = false;
-    const newBoard = Array(4).fill().map(() => Array(4).fill(0));
-    
-    for (let j = 0; j < 4; j++) {
-      // Get column and filter zeros
-      let column = board.map(row => row[j]).filter(cell => cell !== 0);
-      
-      // Merge adjacent equal numbers
-      for (let i = column.length - 1; i > 0; i--) {
-        if (column[i] === column[i - 1]) {
-          column[i] *= 2;
-          setScore(prev => prev + column[i]);
-          column.splice(i - 1, 1);
-          moved = true;
+    let mergedScore = 0;
+    let newTiles = [...tiles];
+    let board = getBoard(newTiles);
+
+    // Helper to compress (slide) a line
+    function compress(line) {
+      return line.filter(Boolean);
+    }
+    // Helper to merge a line (returns new line and score delta)
+    function merge(line) {
+      let res = [];
+      let scoreDelta = 0;
+      for (let i = 0; i < line.length; i++) {
+        if (i < line.length - 1 && line[i].value === line[i + 1].value) {
+          line[i].value *= 2;
+          scoreDelta += line[i].value;
+          // Remove merged tile from newTiles
+          newTiles = newTiles.filter(t => t.id !== line[i + 1].id);
+          res.push(line[i]);
+          i++; // skip next
+        } else {
+          res.push(line[i]);
         }
       }
-      
-      // Pad with zeros
-      while (column.length < 4) {
-        column.unshift(0);
-      }
-      
-      // Update the new board
-      for (let i = 0; i < 4; i++) {
-        newBoard[i][j] = column[i];
-      }
-      
-      // Check if the column has changed
-      const oldColumn = board.map(row => row[j]);
-      if (JSON.stringify(oldColumn) !== JSON.stringify(column)) {
-        moved = true;
-      }
-    }
-    
-    return { newBoard, moved };
-  }, []);
-
-  const checkGameOver = useCallback(() => {
-    // Check for empty cells
-    for (let i = 0; i < 4; i++) {
-      for (let j = 0; j < 4; j++) {
-        if (board[i][j] === 0) return;
-      }
+      return [res, scoreDelta];
     }
 
-    // Check for possible merges
-    for (let i = 0; i < 4; i++) {
-      for (let j = 0; j < 4; j++) {
-        if (
-          (i < 3 && board[i][j] === board[i + 1][j]) ||
-          (j < 3 && board[i][j] === board[i][j + 1])
-        ) {
-          return;
+    // For each row/col, process compress-merge-compress
+    for (let i = 0; i < GRID_SIZE; i++) {
+      let line = [];
+      // Get the line (row or col)
+      for (let j = 0; j < GRID_SIZE; j++) {
+        let r = direction === 'ArrowUp' || direction === 'ArrowDown' ? (direction === 'ArrowUp' ? j : GRID_SIZE - 1 - j) : i;
+        let c = direction === 'ArrowLeft' || direction === 'ArrowRight' ? (direction === 'ArrowLeft' ? j : GRID_SIZE - 1 - j) : i;
+        line.push(board[r][c]);
+      }
+      let originalLine = [...line];
+      // 1. Compress
+      line = compress(line);
+      // 2. Merge
+      let scoreDelta = 0;
+      [line, scoreDelta] = merge(line);
+      // 3. Compress again
+      line = compress(line);
+      // Pad with nulls
+      while (line.length < GRID_SIZE) line.push(null);
+      // Write back to board and update tile positions
+      for (let j = 0; j < GRID_SIZE; j++) {
+        let r = direction === 'ArrowUp' || direction === 'ArrowDown' ? (direction === 'ArrowUp' ? j : GRID_SIZE - 1 - j) : i;
+        let c = direction === 'ArrowLeft' || direction === 'ArrowRight' ? (direction === 'ArrowLeft' ? j : GRID_SIZE - 1 - j) : i;
+        if (board[r][c] !== line[j]) moved = moved || (board[r][c] && (!line[j] || board[r][c].id !== line[j]?.id));
+        board[r][c] = line[j];
+        if (line[j]) {
+          line[j].row = r;
+          line[j].col = c;
         }
       }
+      mergedScore += scoreDelta;
     }
-
-    setGameOver(true);
-  }, [board]);
+    newTiles = newTiles.filter(Boolean);
+    if (moved) {
+      newTiles = addRandomTile(newTiles);
+      setScore(s => s + mergedScore);
+    }
+    setTiles(newTiles);
+    return moved;
+  }, [tiles, addRandomTile]);
 
   // Handle keyboard events
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (gameOver || animating) return;
-
-      let result;
-      switch (event.key) {
-        case 'ArrowUp':
-          result = moveUp(board);
-          break;
-        case 'ArrowDown':
-          result = moveDown(board);
-          break;
-        case 'ArrowLeft':
-          result = moveLeft(board);
-          break;
-        case 'ArrowRight':
-          result = moveRight(board);
-          break;
-        default:
-          return;
-      }
-
-      if (result.moved) {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         setAnimating(true);
-        setBoard(result.newBoard);
-        // Add new tile after the animation completes
+        move(event.key);
         setTimeout(() => {
-          addRandomTile();
-          checkGameOver();
           setAnimating(false);
         }, 200);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [board, gameOver, moveUp, moveDown, moveLeft, moveRight, addRandomTile, checkGameOver, animating]);
+  }, [move, gameOver, animating]);
 
   const resetGame = () => {
-    setBoard(Array(4).fill().map(() => Array(4).fill(0)));
+    tileId = 1;
+    let newTiles = [];
+    newTiles = addRandomTile(newTiles);
+    newTiles = addRandomTile(newTiles);
+    setTiles(newTiles);
     setScore(0);
     setGameOver(false);
-    // Add initial tiles after the board is reset
-    requestAnimationFrame(() => {
-      addRandomTile();
-      addRandomTile();
-    });
   };
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg">
-        <div className="flex justify-between items-center mb-4">
+      <div className="bg-white p-8 rounded-lg shadow-lg flex flex-col items-center">
+        <div className="flex justify-between items-center mb-4 w-full" style={{maxWidth: BOARD_SIZE}}>
           <h1 className="text-4xl font-bold text-gray-800">2048</h1>
           <div className="text-right">
             <div className="text-2xl font-bold text-gray-700">Score: {score}</div>
@@ -287,39 +183,53 @@ function App() {
             </button>
           </div>
         </div>
-        
-        <div className="grid grid-cols-4 gap-4 bg-gray-200 p-4 rounded-lg relative">
+        <div
+          className="relative bg-gray-200 rounded-lg flex items-center justify-center"
+          style={{
+            width: BOARD_SIZE,
+            height: BOARD_SIZE,
+            margin: '0 auto',
+            boxSizing: 'border-box',
+          }}
+        >
           {/* Background grid */}
-          {Array(16).fill().map((_, index) => (
-            <div
-              key={`grid-${index}`}
-              className="w-20 h-20 bg-gray-300 rounded-lg"
-            />
-          ))}
-          
+          <div
+            className="absolute top-0 left-0 w-full h-full grid"
+            style={{
+              gridTemplateColumns: `repeat(${GRID_SIZE}, ${CELL_SIZE}px)`,
+              gridTemplateRows: `repeat(${GRID_SIZE}, ${CELL_SIZE}px)`,
+              gap: `${CELL_GAP}px`,
+              zIndex: 1,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+            }}
+          >
+            {Array(GRID_SIZE * GRID_SIZE).fill().map((_, idx) => (
+              <div key={idx} className="bg-gray-300 rounded-lg w-full h-full" />
+            ))}
+          </div>
           {/* Tiles */}
-          {board.map((row, i) =>
-            row.map((cell, j) => (
-              cell !== 0 && (
-                <div
-                  key={`${i}-${j}`}
-                  className={`absolute w-20 h-20 flex items-center justify-center rounded-lg text-2xl font-bold
-                    ${getTileColor(cell)}
-                    ${getTextColor(cell)}
-                    transition-all duration-200 ease-out
-                    transform-gpu will-change-transform`}
-                  style={{
-                    top: `${i * 6 + 1}rem`,
-                    left: `${j * 6 + 1}rem`,
-                  }}
-                >
-                  {cell}
-                </div>
-              )
-            ))
-          )}
+          {tiles.map(tile => (
+            <div
+              key={tile.id}
+              className={`absolute flex items-center justify-center rounded-lg text-2xl font-bold
+                ${getTileColor(tile.value)}
+                ${getTextColor(tile.value)}
+                transition-all duration-200 ease-out
+                transform-gpu will-change-transform`}
+              style={{
+                width: CELL_SIZE,
+                height: CELL_SIZE,
+                top: tile.row * (CELL_SIZE + CELL_GAP),
+                left: tile.col * (CELL_SIZE + CELL_GAP),
+                zIndex: 2,
+              }}
+            >
+              {tile.value}
+            </div>
+          ))}
         </div>
-
         {gameOver && (
           <div className="mt-4 text-center">
             <p className="text-2xl font-bold text-red-500">Game Over!</p>
