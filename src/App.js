@@ -8,6 +8,20 @@ const CELL_GAP = 16; // px
 const MIN_CELL_SIZE = 48; // px, minimum size for mobile
 const MAX_CELL_SIZE = 80; // px, maximum size for desktop
 
+const POKEMON_MAPPING = {
+  2: "pichu.png",
+  4: "pikachu.png",
+  8: "raichu.png",
+  16: "charmeleon.png",
+  32: "charizard.png",
+  64: "lucario.png",
+  128: "garchomp.png",
+  256: "metagross.png",
+  512: "lunala.png",
+  1024: "solgaleo.png",
+  2048: "zeraora.png",
+};
+
 function App() {
   const [gridSize, setGridSize] = useState(4); // Default to 4x4
   const [tiles, setTiles] = useState([]); // Array of {id, value, row, col}
@@ -319,9 +333,8 @@ function App() {
           {tiles.map(tile => (
             <div
               key={tile.id}
-              className={`absolute flex items-center justify-center rounded-lg text-2xl font-bold
+              className={`absolute rounded-lg
                 ${getTileColor(tile.value)}
-                ${getTextColor(tile.value)}
                 transition-all duration-200 ease-out
                 transform-gpu will-change-transform
                 ${mergedIds.includes(tile.id) ? 'animate-merge' : ''}`}
@@ -331,10 +344,27 @@ function App() {
                 top: tile.row * (cellSize + CELL_GAP),
                 left: tile.col * (cellSize + CELL_GAP),
                 zIndex: 2,
-                fontSize: cellSize > 50 ? '2rem' : '1.2rem',
               }}
             >
-              {tile.value}
+              {POKEMON_MAPPING[tile.value] ? (
+                <>
+                  <img
+                    src={`/assets/pokemon-icons/${POKEMON_MAPPING[tile.value]}`}
+                    alt={POKEMON_MAPPING[tile.value].split('.')[0]}
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                  <div
+                    className="absolute bottom-0 right-0 m-1 px-1.5 py-0.5 bg-gray-800 bg-opacity-75 rounded text-white font-bold"
+                    style={{ fontSize: Math.max(10, cellSize * 0.18) + 'px' }}
+                  >
+                    {tile.value}
+                  </div>
+                </>
+              ) : (
+                <div className={`w-full h-full flex items-center justify-center text-2xl font-bold ${getTextColor(tile.value)}`}>
+                  {tile.value}
+                </div>
+              )}
             </div>
           ))}
         </div>
